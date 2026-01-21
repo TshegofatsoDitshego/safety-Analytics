@@ -6,7 +6,7 @@ A **full-stack industrial safety data analytics platform** that demonstrates adv
 
 ## Why This Project?
 
-I built this project to showcase my capabilities for the **Software Engineering Internship at Safety.io**. The project directly addresses Safety.io's core business: **cloud-based safety monitoring and analytics for industrial environments**.
+I built this project to showcase my capabilities . The project directly addresses  **cloud-based safety monitoring and analytics for industrial environments** and shows my spftwareengineering and data engineering skills.
 
 ## Key Features
 
