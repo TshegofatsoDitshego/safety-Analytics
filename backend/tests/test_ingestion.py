@@ -1,53 +1,63 @@
 """
 Tests for data ingestion pipeline
 """
-import pytest
+import unittest
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from faker import Faker
 
-from app.models.database import Base, Equipment, SensorReading, EquipmentType
+# Assuming these are your actual module paths
+from app.models.database import Base, Equipment, EquipmentType, SensorReading
 from app.services.ingestion import DataIngestionPipeline
 
 fake = Faker()
 
-# Test database setup
+# Test database setup (in-memory SQLite)
 TEST_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(bind=engine)
 
 
-@pytest.fixture
-def db_session():
-    """Create a fresh database session for each test"""
-    Base.metadata.create_all(bind=engine)
-    session = TestSessionLocal()
-    
-    # Create test equipment
-    equipment = Equipment(
-        equipment_id="TEST-001",
-        equipment_type=EquipmentType.GAS_DETECTOR,
-        manufacturer="Test Corp",
-        model="Test Model",
-        serial_number="TEST-SN-001"
-    )
-    session.add(equipment)
-    session.commit()
-    
-    yield session
-    
-    session.close()
-    Base.metadata.drop_all(bind=engine)
+class TestDataIngestionPipeline(unittest.TestCase):
+    """
+    Test suite for DataIngestionPipeline using unittest
+    """
 
+    @classmethod
+    def setUpClass(cls):
+        """Create tables once for the whole test class"""
+        Base.metadata.create_all(bind=engine)
 
-class TestDataIngestionPipeline:
-    """Test suite for data ingestion pipeline"""
-    
-    def test_ingest_valid_readings(self, db_session):
+    @classmethod
+    def tearDownClass(cls):
+        """Drop tables after all tests are done"""
+        Base.metadata.drop_all(bind=engine)
+
+    def setUp(self):
+        """Run before every test - fresh session + test equipment"""
+        self.session = TestSessionLocal()
+
+        # Create test equipment (appears in every test)
+        self.equipment = Equipment(
+            equipment_id="TEST-001",
+            equipment_type=EquipmentType.GAS_DETECTOR,
+            manufacturer="Test Corp",
+            model="Test Model",
+            serial_number="TEST-SN-001"
+        )
+        self.session.add(self.equipment)
+        self.session.commit()
+
+        # Create pipeline instance for this test
+        self.pipeline = DataIngestionPipeline(self.session)
+
+    def tearDown(self):
+        """Run after every test - clean session"""
+        self.session.close()
+
+    def test_ingest_valid_readings(self):
         """Test ingestion of valid sensor readings"""
-        pipeline = DataIngestionPipeline(db_session)
-        
         readings = [
             {
                 "equipment_id": "TEST-001",
@@ -66,18 +76,16 @@ class TestDataIngestionPipeline:
                 "reading_status": "normal"
             }
         ]
-        
-        result = pipeline.ingest_batch(readings)
-        
-        assert result["success"] is True
-        assert result["total_inserted"] == 2
-        assert result["invalid_count"] == 0
-        assert result["duplicate_count"] == 0
-    
-    def test_reject_invalid_readings(self, db_session):
+
+        result = self.pipeline.ingest_batch(readings)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total_inserted"], 2)
+        self.assertEqual(result["invalid_count"], 0)
+        self.assertEqual(result["duplicate_count"], 0)
+
+    def test_reject_invalid_readings(self):
         """Test that invalid readings are rejected"""
-        pipeline = DataIngestionPipeline(db_session)
-        
         readings = [
             {
                 "equipment_id": "TEST-001",
@@ -92,19 +100,16 @@ class TestDataIngestionPipeline:
                 "time": datetime.utcnow()
             }
         ]
-        
-        result = pipeline.ingest_batch(readings)
-        
-        assert result["success"] is True
-        assert result["total_inserted"] == 0
-        assert result["invalid_count"] == 2
-    
-    def test_deduplicate_readings(self, db_session):
-        """Test that duplicate readings are removed"""
-        pipeline = DataIngestionPipeline(db_session)
-        
+
+        result = self.pipeline.ingest_batch(readings)
+
+        self.assertTrue(result["success"])           # usually still "success" even with invalids
+        self.assertEqual(result["total_inserted"], 0)
+        self.assertEqual(result["invalid_count"], 2)
+
+    def test_deduplicate_readings(self):
+        """Test that duplicate readings are removed/handled"""
         timestamp = datetime.utcnow()
-        
         readings = [
             {
                 "equipment_id": "TEST-001",
@@ -119,17 +124,15 @@ class TestDataIngestionPipeline:
                 "time": timestamp  # Duplicate
             }
         ]
-        
-        result = pipeline.ingest_batch(readings)
-        
-        assert result["success"] is True
-        assert result["total_inserted"] == 1
-        assert result["duplicate_count"] == 1
-    
-    def test_detect_late_arrivals(self, db_session):
+
+        result = self.pipeline.ingest_batch(readings)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total_inserted"], 1)
+        self.assertEqual(result["duplicate_count"], 1)
+
+    def test_detect_late_arrivals(self):
         """Test detection of late-arriving data"""
-        pipeline = DataIngestionPipeline(db_session)
-        
         readings = [
             {
                 "equipment_id": "TEST-001",
@@ -138,18 +141,14 @@ class TestDataIngestionPipeline:
                 "time": datetime.utcnow() - timedelta(hours=2)  # 2 hours old
             }
         ]
-        
-        result = pipeline.ingest_batch(readings)
-        
-        # Should still ingest but mark as late
-        assert result["success"] is True
-        assert result["late_arrival_count"] == 1
-    
-    def test_batch_performance(self, db_session):
+
+        result = self.pipeline.ingest_batch(readings)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result.get("late_arrival_count", 0), 1)
+
+    def test_batch_performance(self):
         """Test that batch ingestion performs well with larger datasets"""
-        pipeline = DataIngestionPipeline(db_session)
-        
-        # Generate 1000 readings
         readings = []
         for i in range(1000):
             readings.append({
@@ -159,18 +158,16 @@ class TestDataIngestionPipeline:
                 "time": datetime.utcnow() - timedelta(seconds=i),
                 "reading_status": "normal"
             })
-        
-        result = pipeline.ingest_batch(readings)
-        
-        assert result["success"] is True
-        assert result["total_inserted"] == 1000
-        # Processing should be reasonably fast (less than 5 seconds for 1000 records)
-        assert result["processing_time_ms"] < 5000
-    
-    def test_unreasonable_values_rejected(self, db_session):
+
+        result = self.pipeline.ingest_batch(readings)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total_inserted"], 1000)
+        # Adjust threshold depending on your machine / actual performance
+        self.assertLess(result.get("processing_time_ms", 9999), 5000)
+
+    def test_unreasonable_values_rejected(self):
         """Test that unreasonable sensor values are rejected"""
-        pipeline = DataIngestionPipeline(db_session)
-        
         readings = [
             {
                 "equipment_id": "TEST-001",
@@ -179,8 +176,12 @@ class TestDataIngestionPipeline:
                 "time": datetime.utcnow()
             }
         ]
-        
-        result = pipeline.ingest_batch(readings)
-        
-        assert result["invalid_count"] == 1
-        assert result["total_inserted"] == 0
+
+        result = self.pipeline.ingest_batch(readings)
+
+        self.assertEqual(result["invalid_count"], 1)
+        self.assertEqual(result["total_inserted"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
