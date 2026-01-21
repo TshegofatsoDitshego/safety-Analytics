@@ -176,18 +176,35 @@ npm test
 - [ ] Real-time WebSocket updates
 - [ ] Mobile-responsive dashboard improvements
 - [ ] Export functionality for raw data
-- [ ] Multi-tenancy support
 
 ## Why This Project?
 
 I built this to explore the intersection of IoT data engineering and industrial safety—a space where data-driven insights can literally save lives. The project demonstrates my ability to:
-- Design scalable data pipelines
-- Build production-ready APIs
-- Create intuitive user interfaces
-- Apply ML for predictive analytics
-- Write maintainable, tested code
+## Data Engineering Concepts Demonstrated
+- Batch data ingestion
+- Data validation and cleaning
+- Deduplication strategies
+- Time-series data modeling
+- Partitioning and retention
+- Background data processing
+- Basic anomaly detection
+
+
+## What I Implemented
+- Built FastAPI ingestion endpoints
+- Implemented TimescaleDB hypertables and retention
+- Created data quality checks (completeness, validity)
+- Implemented batch ingestion and deduplication
+- Wrote Celery background tasks
 
 Inspired by companies like Safety.io and MSA Safety that are modernizing industrial safety through connected devices and cloud analytics.
+
+## Example Data Flow
+1. Sensor sends 100 readings
+2. 5 invalid readings are rejected
+3. 3 duplicates are removed
+4. 92 records are stored
+5. 2 anomalies trigger alerts
 
 ## License
 
